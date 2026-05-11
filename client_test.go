@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"context"
 	"encoding/json"
+	"log/slog"
 	"net/http"
 	"net/http/httptest"
 	"testing"
@@ -23,6 +24,7 @@ func testClient(t *testing.T, handler http.HandlerFunc) (*Client, *httptest.Serv
 		httpClient:        client.httpClient,
 		accessToken:       "test-token",
 		accessTokenExpiry: time.Now().Add(time.Hour),
+		logger:            slog.New(slog.DiscardHandler),
 	}
 	return client, srv
 }

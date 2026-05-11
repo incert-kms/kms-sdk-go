@@ -219,12 +219,7 @@ func (c *Client) do(ctx context.Context, method, path string, body io.Reader, au
 	if err != nil {
 		return fmt.Errorf("executing request: %w", err)
 	}
-	defer func(Body io.ReadCloser) {
-		err := Body.Close()
-		if err != nil {
-			fmt.Println(err)
-		}
-	}(resp.Body)
+	defer func() { _ = resp.Body.Close() }()
 
 	if resp.StatusCode >= 400 {
 		return newAPIError(resp)

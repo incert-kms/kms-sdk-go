@@ -19,7 +19,7 @@ func WithHTTPClient(hc *http.Client) Option {
 func WithTLSSkipVerify() Option {
 	return func(c *Client) {
 		c.httpClient.Transport = &http.Transport{
-			TLSClientConfig: &tls.Config{InsecureSkipVerify: true},
+			TLSClientConfig: &tls.Config{InsecureSkipVerify: true}, //nolint:gosec // explicit caller opt-in via WithTLSSkipVerify; intended for dev/self-signed environments
 		}
 	}
 }
