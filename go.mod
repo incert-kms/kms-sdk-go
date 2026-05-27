@@ -1,5 +1,5 @@
 module github.com/incert-kms/kms-sdk-go
 
-go 1.25.4
+go 1.25.0
 
 require github.com/google/uuid v1.6.0
