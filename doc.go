@@ -19,7 +19,7 @@
 //
 //	ctx := context.Background()
 //	client := kmssdk.NewClient(
-//	    kmssdk.WithBaseURL("https://kms.example.com/kms/api"),
+//	    kmssdk.WithBaseURL("https://kms.example.com/kms"),
 //	    kmssdk.WithUsernameAndPassword("user", "pass"),
 //	    kmssdk.WithLogger(slog.Default()),
 //	)
@@ -28,7 +28,8 @@
 //	}
 //
 // Available options:
-//   - [WithBaseURL] overrides the default API base URL.
+//   - [WithBaseURL] overrides the default deployment base URL (the /api
+//     prefix is appended internally).
 //   - [WithUsernameAndPassword] sets the credentials used for the Keycloak
 //     password grant.
 //   - [WithTimeout] adjusts the HTTP timeout (default 10s).

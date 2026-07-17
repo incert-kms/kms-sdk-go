@@ -5,6 +5,21 @@ All notable changes to this project are documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project aims to adhere to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [Unreleased]
+
+### Breaking changes
+
+- The configured base URL no longer includes the `/api` prefix — the SDK
+  appends it internally, aligning with the API documentation's convention
+  that `{base}` is the deployment root and every REST path lives under
+  `{base}/api/...`. Migration: drop the trailing `/api` from `WithBaseURL`
+  (`WithBaseURL("https://kms.example.com/kms/api")` →
+  `WithBaseURL("https://kms.example.com/kms")`). The default base URL
+  changed accordingly to `https://kms-uat.incert.lu/kms`. Note: a
+  *relative* Keycloak URL from auth discovery now resolves against the
+  deployment root instead of the `/api` root (absolute and root-relative
+  Keycloak URLs are unaffected).
+
 ## [1.1.0] - 2026-07-17
 
 Conformance, concurrency and robustness release, aligning the SDK with the

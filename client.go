@@ -19,8 +19,9 @@ import (
 )
 
 // defaultBaseURL points at INCERT's UAT environment; production deployments
-// must set their own base URL with [WithBaseURL].
-const defaultBaseURL = "https://kms-uat.incert.lu/kms/api"
+// must set their own base URL with [WithBaseURL]. The /api prefix common to
+// every REST path is appended internally.
+const defaultBaseURL = "https://kms-uat.incert.lu/kms"
 const defaultTimeout = 10 * time.Second
 const pageSize = 10000 // page size requested from the paged list endpoints
 
@@ -31,6 +32,7 @@ const pageSize = 10000 // page size requested from the paged list endpoints
 // goroutines. Connect itself must complete before concurrent calls start.
 type Client struct {
 	baseURL     string
+	apiURL      string // baseURL + "/api", the root of every REST path
 	username    string
 	password    string
 	httpClient  *http.Client
@@ -52,6 +54,7 @@ func NewClient(opts ...Option) *Client {
 	for _, opt := range opts {
 		opt(c)
 	}
+	c.apiURL = c.baseURL + "/api"
 
 	if c.httpClient == nil {
 		c.httpClient = &http.Client{Timeout: c.timeout}
@@ -81,7 +84,7 @@ func (c *Client) Connect(ctx context.Context) error {
 
 	switch config.Type {
 	case AuthenticationTypeSelfManaged:
-		c.tokenSource = newSelfManagedAuth(c.baseURL, c.httpClient, c.username, c.password, c.logger)
+		c.tokenSource = newSelfManagedAuth(c.apiURL, c.httpClient, c.username, c.password, c.logger)
 	case AuthenticationTypeOAuth2:
 		tokenSource, err := c.newOAuth2FromConfig(config)
 		if err != nil {
@@ -357,7 +360,7 @@ func (c *Client) newRequest(ctx context.Context, method, path string, body []byt
 	if body != nil {
 		reader = bytes.NewReader(body)
 	}
-	req, err := http.NewRequestWithContext(ctx, method, c.baseURL+path, reader)
+	req, err := http.NewRequestWithContext(ctx, method, c.apiURL+path, reader)
 	if err != nil {
 		return nil, fmt.Errorf("creating request: %w", err)
 	}

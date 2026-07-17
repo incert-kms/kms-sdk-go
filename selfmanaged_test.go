@@ -43,11 +43,11 @@ func TestConnect_selfManaged(t *testing.T) {
 	srv := httptest.NewServer(mux)
 	t.Cleanup(srv.Close)
 
-	mux.HandleFunc("GET /configs/auth", func(w http.ResponseWriter, r *http.Request) {
+	mux.HandleFunc("GET /api/configs/auth", func(w http.ResponseWriter, r *http.Request) {
 		json.NewEncoder(w).Encode(Config{Type: AuthenticationTypeSelfManaged})
 	})
-	mux.HandleFunc("POST /auth/token", selfManagedLoginHandler(t, nil))
-	mux.HandleFunc("GET /vslots", func(w http.ResponseWriter, r *http.Request) {
+	mux.HandleFunc("POST /api/auth/token", selfManagedLoginHandler(t, nil))
+	mux.HandleFunc("GET /api/vslots", func(w http.ResponseWriter, r *http.Request) {
 		if got, want := r.Header.Get("Authorization"), "Bearer sm-token"; got != want {
 			t.Errorf("Authorization = %q, want %q", got, want)
 		}
@@ -180,7 +180,7 @@ func TestClient_selfManagedReauthenticatesOnceOn401(t *testing.T) {
 	t.Cleanup(srv.Close)
 
 	mux.HandleFunc("POST /auth/token", selfManagedLoginHandler(t, nil))
-	mux.HandleFunc("GET /protected", func(w http.ResponseWriter, r *http.Request) {
+	mux.HandleFunc("GET /api/protected", func(w http.ResponseWriter, r *http.Request) {
 		protectedHits.Add(1)
 		if r.Header.Get("Authorization") != "Bearer sm-token" {
 			w.WriteHeader(http.StatusUnauthorized)

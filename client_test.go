@@ -50,9 +50,12 @@ func TestNewClient_defaults(t *testing.T) {
 }
 
 func TestNewClient_options(t *testing.T) {
-	c := NewClient(WithBaseURL("https://kms.example.com/api/"), WithTimeout(42*time.Second))
-	if c.baseURL != "https://kms.example.com/api" {
+	c := NewClient(WithBaseURL("https://kms.example.com/kms/"), WithTimeout(42*time.Second))
+	if c.baseURL != "https://kms.example.com/kms" {
 		t.Errorf("trailing slash not trimmed: %s", c.baseURL)
+	}
+	if c.apiURL != "https://kms.example.com/kms/api" {
+		t.Errorf("apiURL = %s, want the base URL with /api appended", c.apiURL)
 	}
 	if c.httpClient.Timeout != 42*time.Second {
 		t.Errorf("timeout = %s, want 42s", c.httpClient.Timeout)
@@ -213,8 +216,8 @@ func TestClient_GetVSlots(t *testing.T) {
 		if r.Method != http.MethodGet {
 			t.Errorf("method = %s, want GET", r.Method)
 		}
-		if r.URL.RequestURI() != "/vslots?page=0&size=10000" {
-			t.Errorf("request URI = %s, want /vslots?page=0&size=10000", r.URL.RequestURI())
+		if r.URL.RequestURI() != "/api/vslots?page=0&size=10000" {
+			t.Errorf("request URI = %s, want /api/vslots?page=0&size=10000", r.URL.RequestURI())
 		}
 		if got, want := r.Header.Get("Authorization"), "Bearer test-token"; got != want {
 			t.Errorf("Authorization = %q, want %q", got, want)
@@ -285,8 +288,8 @@ func TestClient_GetKeys(t *testing.T) {
 		if r.Method != http.MethodGet {
 			t.Errorf("method = %s, want GET", r.Method)
 		}
-		if r.URL.Path != "/keys" {
-			t.Errorf("path = %s, want /keys", r.URL.Path)
+		if r.URL.Path != "/api/keys" {
+			t.Errorf("path = %s, want /api/keys", r.URL.Path)
 		}
 		q := r.URL.Query()
 		if q.Get("size") != "10000" {
@@ -373,7 +376,7 @@ func TestClient_GetKey(t *testing.T) {
 		if r.Method != http.MethodGet {
 			t.Errorf("method = %s, want GET", r.Method)
 		}
-		wantPath := "/keys/" + keyID.String()
+		wantPath := "/api/keys/" + keyID.String()
 		if r.URL.Path != wantPath {
 			t.Errorf("path = %s, want %s", r.URL.Path, wantPath)
 		}
@@ -418,7 +421,7 @@ func TestClient_CreateKey(t *testing.T) {
 		if r.Method != http.MethodPost {
 			t.Errorf("method = %s, want POST", r.Method)
 		}
-		wantPath := "/vslots/" + vslotID.String() + "/p/kg"
+		wantPath := "/api/vslots/" + vslotID.String() + "/p/kg"
 		if r.URL.Path != wantPath {
 			t.Errorf("path = %s, want %s", r.URL.Path, wantPath)
 		}
@@ -478,7 +481,7 @@ func TestClient_DeleteKey(t *testing.T) {
 		if r.Method != http.MethodPost {
 			t.Errorf("method = %s, want POST", r.Method)
 		}
-		wantPath := "/keys/" + keyID.String() + "/state"
+		wantPath := "/api/keys/" + keyID.String() + "/state"
 		if r.URL.Path != wantPath {
 			t.Errorf("path = %s, want %s", r.URL.Path, wantPath)
 		}
@@ -518,8 +521,8 @@ func TestClient_Crypto(t *testing.T) {
 		inData   []byte
 		respData []byte
 	}{
-		{"encrypt", OperationEncrypt, "/keys/" + keyID.String() + "/p/encrypt", plaintext, ciphertext},
-		{"decrypt", OperationDecrypt, "/keys/" + keyID.String() + "/p/decrypt", ciphertext, plaintext},
+		{"encrypt", OperationEncrypt, "/api/keys/" + keyID.String() + "/p/encrypt", plaintext, ciphertext},
+		{"decrypt", OperationDecrypt, "/api/keys/" + keyID.String() + "/p/decrypt", ciphertext, plaintext},
 	}
 
 	for _, tc := range cases {
@@ -607,7 +610,7 @@ func TestConnect_usesDiscoveryRealmAndClientID(t *testing.T) {
 	srv := httptest.NewServer(mux)
 	t.Cleanup(srv.Close)
 
-	mux.HandleFunc("GET /configs/auth", func(w http.ResponseWriter, r *http.Request) {
+	mux.HandleFunc("GET /api/configs/auth", func(w http.ResponseWriter, r *http.Request) {
 		json.NewEncoder(w).Encode(Config{
 			Type: AuthenticationTypeOAuth2,
 			OAuth2: &OAuth2Config{
@@ -618,7 +621,7 @@ func TestConnect_usesDiscoveryRealmAndClientID(t *testing.T) {
 	})
 	mux.HandleFunc("POST /idp/realms/myrealm/protocol/openid-connect/token",
 		keycloakTokenHandler(t, "myclient", nil))
-	mux.HandleFunc("GET /vslots", func(w http.ResponseWriter, r *http.Request) {
+	mux.HandleFunc("GET /api/vslots", func(w http.ResponseWriter, r *http.Request) {
 		if got, want := r.Header.Get("Authorization"), "Bearer fresh-token"; got != want {
 			t.Errorf("Authorization = %q, want %q", got, want)
 		}
@@ -649,7 +652,7 @@ func TestClient_reauthenticatesOnceOn401(t *testing.T) {
 
 	mux.HandleFunc("POST /realms/kms/protocol/openid-connect/token",
 		keycloakTokenHandler(t, "kms", nil))
-	mux.HandleFunc("GET /protected", func(w http.ResponseWriter, r *http.Request) {
+	mux.HandleFunc("GET /api/protected", func(w http.ResponseWriter, r *http.Request) {
 		protectedHits.Add(1)
 		if r.Header.Get("Authorization") != "Bearer fresh-token" {
 			w.WriteHeader(http.StatusUnauthorized)

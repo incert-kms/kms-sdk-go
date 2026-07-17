@@ -10,9 +10,10 @@ import (
 // Option configures a [Client] during [NewClient].
 type Option func(*Client)
 
-// WithBaseURL overrides the default API base URL. The URL must include the
-// /api prefix, e.g. "https://kms.example.com/kms/api"; a trailing slash is
-// removed.
+// WithBaseURL overrides the default base URL of the Keys&More deployment,
+// e.g. "https://kms.example.com/kms". The /api prefix common to every REST
+// path is appended internally and must NOT be part of the URL; a trailing
+// slash is removed.
 func WithBaseURL(url string) Option {
 	return func(c *Client) { c.baseURL = strings.TrimRight(url, "/") }
 }

@@ -19,7 +19,7 @@ import (
 // renews the access token with the refresh endpoint, falling back to a fresh
 // login when the refresh is rejected.
 type selfManagedAuth struct {
-	baseURL    string // KMS API base URL, including the /api prefix
+	baseURL    string // KMS API root ("<base>/api"), derived by the Client
 	httpClient *http.Client
 	username   string
 	password   string

@@ -3,7 +3,8 @@
 //
 // Configuration comes from the environment:
 //
-//	KMS_BASE_URL  API base URL, e.g. https://kms.example.com/kms/api
+//	KMS_BASE_URL  deployment base URL, e.g. https://kms.example.com/kms
+//	              (the /api prefix is appended internally)
 //	KMS_USERNAME  username for the Keycloak password grant
 //	KMS_PASSWORD  password for the Keycloak password grant
 //	KMS_VSLOT_ID  UUID of the vslot to create the test key in

@@ -15,7 +15,7 @@ func ExampleNewClient() {
 	ctx := context.Background()
 
 	client := kmssdk.NewClient(
-		kmssdk.WithBaseURL("https://kms.example.com/kms/api"),
+		kmssdk.WithBaseURL("https://kms.example.com/kms"),
 		kmssdk.WithUsernameAndPassword(os.Getenv("KMS_USERNAME"), os.Getenv("KMS_PASSWORD")),
 	)
 	if err := client.Connect(ctx); err != nil {

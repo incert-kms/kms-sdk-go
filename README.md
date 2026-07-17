@@ -40,7 +40,7 @@ func main() {
     }))
 
     client := kmssdk.NewClient(
-        kmssdk.WithBaseURL("https://kms.example.com/kms/api"),
+        kmssdk.WithBaseURL("https://kms.example.com/kms"),
         kmssdk.WithUsernameAndPassword(os.Getenv("KMS_USERNAME"), os.Getenv("KMS_PASSWORD")),
         kmssdk.WithLogger(logger),
     )
@@ -92,7 +92,7 @@ The client is safe for concurrent use by multiple goroutines once `Connect` has 
 
 | Option | Description |
 | --- | --- |
-| `WithBaseURL(url)` | Override the default API base URL (the default points at INCERT's UAT environment). |
+| `WithBaseURL(url)` | Override the default base URL of the deployment, e.g. `https://kms.example.com/kms` — without the `/api` prefix, which is appended internally (the default points at INCERT's UAT environment). |
 | `WithUsernameAndPassword(user, pass)` | Credentials used for the Keycloak password grant. |
 | `WithTimeout(d)` | Overall HTTP timeout of the SDK-managed client (default 10s). |
 | `WithHTTPClient(hc)` | Supply a custom `*http.Client`; takes precedence over `WithTimeout` and `WithTLSSkipVerify`. |
