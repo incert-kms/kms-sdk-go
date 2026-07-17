@@ -6,6 +6,8 @@ import (
 	"github.com/google/uuid"
 )
 
+// Vslot is a virtual slot: the container in which keys live, bound to one
+// crypto provider and one universe (VSlotSearchResultModel).
 type Vslot struct {
 	ID           uuid.UUID  `json:"id"`
 	Provider     uuid.UUID  `json:"provider"`
@@ -16,6 +18,8 @@ type Vslot struct {
 	CreatedBy    string     `json:"createdBy"`
 }
 
+// pagedResponse is the Spring-style page envelope shared by all list
+// endpoints.
 type pagedResponse[T any] struct {
 	Content       []T  `json:"content"`
 	TotalPages    int  `json:"totalPages"`

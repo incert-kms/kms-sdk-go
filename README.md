@@ -39,8 +39,8 @@ func main() {
         Level: slog.LevelInfo,
     }))
 
-    client := kmssdk.NewClient(ctx,
-        kmssdk.WithBaseURL("https://kms-uat.incert.lu/kms/api"),
+    client := kmssdk.NewClient(
+        kmssdk.WithBaseURL("https://kms.example.com/kms/api"),
         kmssdk.WithUsernameAndPassword(os.Getenv("KMS_USERNAME"), os.Getenv("KMS_PASSWORD")),
         kmssdk.WithLogger(logger),
     )
@@ -51,35 +51,40 @@ func main() {
 
     // Create a new AES 256 key in a vslot
     vslotID := uuid.MustParse(os.Getenv("KMS_VSLOT_ID"))
-    key, err := client.CreateKey(ctx, kmssdk.KeyDetail{
+    created, err := client.CreateKey(ctx, vslotID, kmssdk.KeyData{
         Alg:         "AES256",
         Name:        "example-key",
-        Persistence: "EXTERNAL",
-    }, vslotID)
+        Persistence: kmssdk.PersistenceExternal,
+    })
     if err != nil {
         panic(err)
     }
-    fmt.Println("AES KEY:", key.ID)
+    fmt.Println("AES KEY:", created.ID)
 }
 ```
 
-See [examples](./examples) for more.
+See [examples](./examples) and the [package documentation](https://pkg.go.dev/github.com/incert-kms/kms-sdk-go) for more.
 
 ## Features
 
 The SDK exposes the operations needed to manage and use keys through the Keys&More REST API:
 
 - Authentication
-    - OAuth2 with Keycloak (auto-discovered from the server's `/configs/auth` endpoint)
-    - Token caching and refresh handled transparently
+    - Mode auto-discovered from the server's `/configs/auth` endpoint
+    - Self-managed (`SELF_MANAGED`): login, token refresh and logout against the Keys&More TOKEN API
+    - OAuth2 with Keycloak (URL, realm and client id from discovery, password grant)
+    - Token caching and refresh handled transparently; on a 401 the request is replayed once with a fresh token
+    - `Logout` invalidates tokens (server-side on self-managed deployments)
 - Vslots
-    - List vslots
+    - List vslots (paged responses iterated transparently)
 - Keys lifecycle
-    - Create keys
+    - Create keys (returns the new key id and, for `persistence: NONE`, the generated material)
     - Read keys (by ID or by listing/filtering within a vslot)
-    - Delete keys (state transition to `DELETED`)
+    - Delete keys (permanent removal via the `DELETED` lifecycle state)
 - Cryptographic operations
-    - Encrypt / Decrypt data
+    - Encrypt / Decrypt data with algorithm-specific attributes (`iv`, `counter`, `aad`, `label`, ...)
+
+The client is safe for concurrent use by multiple goroutines once `Connect` has returned.
 
 ## Configuration
 
@@ -87,26 +92,35 @@ The SDK exposes the operations needed to manage and use keys through the Keys&Mo
 
 | Option | Description |
 | --- | --- |
-| `WithBaseURL(url)` | Override the default API base URL. |
+| `WithBaseURL(url)` | Override the default API base URL (the default points at INCERT's UAT environment). |
 | `WithUsernameAndPassword(user, pass)` | Credentials used for the Keycloak password grant. |
-| `WithHTTPClient(hc)` | Supply a custom `*http.Client`. |
+| `WithTimeout(d)` | Overall HTTP timeout of the SDK-managed client (default 10s). |
+| `WithHTTPClient(hc)` | Supply a custom `*http.Client`; takes precedence over `WithTimeout` and `WithTLSSkipVerify`. |
 | `WithTLSSkipVerify()` | Disable TLS verification (development only). |
 | `WithLogger(l)` | Supply a `*slog.Logger`; without it the SDK is silent. |
 
 ## Error handling
 
-API errors are returned as `*kmssdk.APIError` and can be inspected with `errors.As`:
+API errors are returned as `*kmssdk.APIError` and can be inspected with `errors.As`.
+Branch on the server error code (`ErrCode*` constants) rather than on the message:
 
 ```go
 if err := client.Connect(ctx); err != nil {
     var apiErr *kmssdk.APIError
-    if errors.As(err, &apiErr) {
+    switch {
+    case errors.As(err, &apiErr) && apiErr.Code == kmssdk.ErrCodeWrongCredentials:
+        fmt.Println("check your username/password")
+    case errors.As(err, &apiErr):
         fmt.Printf("API error %d (%s): %s\n", apiErr.StatusCode, apiErr.Code, apiErr.Message)
-    } else {
-        fmt.Printf("unexpected error: %v\n", err)
+    default:
+        fmt.Printf("transport error: %v\n", err) // connection failure, timeout, ...
     }
 }
 ```
+
+Network-level failures (connection errors, timeouts) are not `APIError` values; they wrap
+the underlying transport error, so `errors.Is(err, context.DeadlineExceeded)` and
+`os.IsTimeout(err)` keep working.
 
 ## License
 

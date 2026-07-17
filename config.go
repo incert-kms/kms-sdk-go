@@ -1,42 +1,61 @@
 package kmssdk
 
+// AuthenticationType is the authentication mode of a deployment, discovered
+// from GET /configs/auth.
 type AuthenticationType string
-type Oauth2Provider string
+
+// OAuth2Provider identifies the IdP family of an OAuth2 deployment.
+type OAuth2Provider string
+
+// KeycloakMode says whether Keys&More manages the Keycloak users itself
+// (MANAGED) or users are administered directly in Keycloak (NON_MANAGED).
 type KeycloakMode string
 
+// Known values of the configuration enums.
 const (
-	AuthenticationTypeOAuth2 AuthenticationType = "OAUTH2"
-	Oauth2ProviderKeycloak   Oauth2Provider     = "KEYCLOAK"
-	KeycloakModeManaged      KeycloakMode       = "MANAGED"
+	AuthenticationTypeOAuth2      AuthenticationType = "OAUTH2"
+	AuthenticationTypeSelfManaged AuthenticationType = "SELF_MANAGED"
+	OAuth2ProviderKeycloak        OAuth2Provider     = "KEYCLOAK"
+	KeycloakModeManaged           KeycloakMode       = "MANAGED"
 )
 
+// Config is the authentication configuration returned by the server's public
+// /configs/auth endpoint (AuthenticationConfigModel).
 type Config struct {
 	UniverseAsUsernamePrefix *bool              `json:"universeAsUsernamePrefix"`
 	Type                     AuthenticationType `json:"type"`
-	Oauth2                   *Oauth2Config      `json:"oauth2,omitempty"`
+	OAuth2                   *OAuth2Config      `json:"oauth2,omitempty"`
 }
 
-type Oauth2Config struct {
-	Provider Oauth2Provider        `json:"provider"`
-	Claims   Oauth2ClaimsConfig    `json:"claims"`
-	Keycloak *Oauth2KeycloakConfig `json:"keycloak,omitempty"`
-	Other    *Oauth2OtherConfig    `json:"other,omitempty"`
+// OAuth2Config carries the OAuth2 coordinates when Config.Type is OAUTH2.
+type OAuth2Config struct {
+	Provider OAuth2Provider        `json:"provider"`
+	Claims   OAuth2ClaimsConfig    `json:"claims"`
+	Keycloak *OAuth2KeycloakConfig `json:"keycloak,omitempty"`
+	Other    *OAuth2OtherConfig    `json:"other,omitempty"`
 }
 
-type Oauth2ClaimsConfig struct {
+// OAuth2ClaimsConfig maps JWT claim paths to the KMS identity values
+// (username, universe, policy).
+type OAuth2ClaimsConfig struct {
 	Username string `json:"username"`
 	Universe string `json:"universe"`
 	Policy   string `json:"policy"`
 }
 
-type Oauth2KeycloakConfig struct {
+// OAuth2KeycloakConfig is set when the provider is KEYCLOAK. URL may be
+// absolute, root-relative, or relative to the KMS base URL; Connect resolves
+// it accordingly.
+type OAuth2KeycloakConfig struct {
 	URL      string       `json:"url"`
 	Realm    string       `json:"realm"`
 	ClientID string       `json:"clientId"`
 	Mode     KeycloakMode `json:"mode"`
 }
 
-type Oauth2OtherConfig struct {
+// OAuth2OtherConfig is set when the provider is OTHER (generic OAuth2/OIDC,
+// e.g. Auth0 or Okta). Not yet consumed by this SDK.
+type OAuth2OtherConfig struct {
 	URL                   string `json:"url"`
 	ClientID              string `json:"clientId"`
 	Audience              string `json:"audience"`

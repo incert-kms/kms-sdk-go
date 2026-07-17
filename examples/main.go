@@ -1,3 +1,12 @@
+// Command example exercises the SDK end-to-end against a real deployment:
+// connect, create an AES key, encrypt/decrypt a message, and delete the key.
+//
+// Configuration comes from the environment:
+//
+//	KMS_BASE_URL  API base URL, e.g. https://kms.example.com/kms/api
+//	KMS_USERNAME  username for the Keycloak password grant
+//	KMS_PASSWORD  password for the Keycloak password grant
+//	KMS_VSLOT_ID  UUID of the vslot to create the test key in
 package main
 
 import (
@@ -14,19 +23,22 @@ import (
 )
 
 func main() {
+	ctx := context.Background()
+
 	logger := slog.New(slog.NewTextHandler(os.Stderr, &slog.HandlerOptions{
 		Level: slog.LevelDebug,
 	}))
 
-	client := kmssdk.NewClient(
-		context.Background(),
-		kmssdk.WithTLSSkipVerify(),
-		kmssdk.WithUsernameAndPassword("adi", "salam"),
-		kmssdk.WithBaseURL("http://localhost:3000/api"),
+	opts := []kmssdk.Option{
+		kmssdk.WithUsernameAndPassword(os.Getenv("KMS_USERNAME"), os.Getenv("KMS_PASSWORD")),
 		kmssdk.WithLogger(logger),
-	)
+	}
+	if baseURL := os.Getenv("KMS_BASE_URL"); baseURL != "" {
+		opts = append(opts, kmssdk.WithBaseURL(baseURL))
+	}
+	client := kmssdk.NewClient(opts...)
 
-	err := client.Connect(context.Background())
+	err := client.Connect(ctx)
 	if err != nil {
 		var apiErr *kmssdk.APIError
 		if errors.As(err, &apiErr) {
@@ -37,24 +49,29 @@ func main() {
 		os.Exit(1)
 	}
 
-	key := kmssdk.KeyDetail{
+	vslotID, err := uuid.Parse(os.Getenv("KMS_VSLOT_ID"))
+	if err != nil {
+		fmt.Printf("invalid KMS_VSLOT_ID: %v\n", err)
+		os.Exit(1)
+	}
+
+	created, err := client.CreateKey(ctx, vslotID, kmssdk.KeyData{
 		Alg:         "AES256",
 		Name:        "test-key",
-		Persistence: "EXTERNAL",
-	}
-	key, err = client.CreateKey(context.Background(), key, uuid.MustParse("a73b7303-ce75-4666-8a3d-e9fb269424fb"))
+		Persistence: kmssdk.PersistenceExternal,
+	})
 	if err != nil {
 		fmt.Printf("error creating key: %v\n", err)
 		os.Exit(1)
 	}
 
-	keyRetrieved, err := client.GetKey(context.Background(), key.ID)
+	keyRetrieved, err := client.GetKey(ctx, created.ID)
 	if err != nil {
 		fmt.Printf("error retrieving key: %v\n", err)
 		os.Exit(1)
 	}
-	if keyRetrieved.ID != key.ID {
-		fmt.Printf("retrieved key ID does not match created key ID: got %s, want %s", keyRetrieved.ID, key.ID)
+	if keyRetrieved.ID != created.ID {
+		fmt.Printf("retrieved key ID does not match created key ID: got %s, want %s", keyRetrieved.ID, created.ID)
 		os.Exit(1)
 	}
 
@@ -65,20 +82,20 @@ func main() {
 		os.Exit(1)
 	}
 
-	ciphertext, err := client.Crypto(context.Background(), kmssdk.OperationEncrypt, key.ID, kmssdk.CryptoRequest{
+	ciphertext, err := client.Crypto(ctx, kmssdk.OperationEncrypt, created.ID, kmssdk.CryptoRequest{
 		Data:       plaintext,
 		Algorithm:  "AES_GCM",
-		Attributes: kmssdk.Attributes{IV: iv},
+		Attributes: map[string]any{"iv": iv},
 	})
 	if err != nil {
 		fmt.Printf("error encrypting: %v\n", err)
 		os.Exit(1)
 	}
 
-	decrypted, err := client.Crypto(context.Background(), kmssdk.OperationDecrypt, key.ID, kmssdk.CryptoRequest{
+	decrypted, err := client.Crypto(ctx, kmssdk.OperationDecrypt, created.ID, kmssdk.CryptoRequest{
 		Data:       ciphertext,
 		Algorithm:  "AES_GCM",
-		Attributes: kmssdk.Attributes{IV: iv},
+		Attributes: map[string]any{"iv": iv},
 	})
 	if err != nil {
 		fmt.Printf("error decrypting: %v\n", err)
@@ -91,7 +108,7 @@ func main() {
 	}
 	fmt.Println("decryption verified")
 
-	err = client.DeleteKey(context.Background(), key.ID)
+	err = client.DeleteKey(ctx, created.ID)
 	if err != nil {
 		fmt.Printf("error deleting key: %v\n", err)
 		os.Exit(1)
