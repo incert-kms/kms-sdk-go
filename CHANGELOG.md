@@ -7,6 +7,16 @@ and this project aims to adhere to [Semantic Versioning](https://semver.org/spec
 
 ## [Unreleased]
 
+### Added
+
+- `Client.Sign` and `Client.Verify` (`POST /keys/{id}/p/sign|verify`,
+  `application/kms.sign+json`) with the new `SignRequest` /
+  `SignatureAttributes` models: the signature to verify travels in
+  `attributes.signature`, and `RSA_PKCS-PSS_RAW` parameters
+  (`hashAlg`/`mgf`/`saltLength`) as numeric PKCS#11 codes. A wrong
+  signature yields `(false, nil)`, mirroring the server's
+  `{"valid": false}` response.
+
 ### Breaking changes
 
 - The configured base URL no longer includes the `/api` prefix — the SDK

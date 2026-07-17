@@ -83,6 +83,7 @@ The SDK exposes the operations needed to manage and use keys through the Keys&Mo
     - Delete keys (permanent removal via the `DELETED` lifecycle state)
 - Cryptographic operations
     - Encrypt / Decrypt data with algorithm-specific attributes (`iv`, `counter`, `aad`, `label`, ...)
+    - Sign / Verify with the full signature registry (RSA PKCS#1/PSS, ECDSA, HMAC, CMAC, ML-DSA); verify reports validity as a boolean, PSS-raw parameters travel as numeric PKCS#11 codes
 
 The client is safe for concurrent use by multiple goroutines once `Connect` has returned.
 

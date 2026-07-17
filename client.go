@@ -289,6 +289,45 @@ func (c *Client) Crypto(ctx context.Context, op CryptoOperation, keyID uuid.UUID
 	return result.Data, nil
 }
 
+// Sign signs data with the given key and returns the signature bytes. The
+// algorithm and its parameters come from the request; see [SignRequest].
+func (c *Client) Sign(ctx context.Context, keyID uuid.UUID, request SignRequest) ([]byte, error) {
+	var result struct {
+		Data []byte `json:"data"`
+	}
+
+	body, err := json.Marshal(request)
+	if err != nil {
+		return nil, fmt.Errorf("marshaling sign request: %w", err)
+	}
+
+	if err := c.do(ctx, http.MethodPost, "/keys/"+keyID.String()+"/p/sign", body, true, &result, "application/kms.sign+json"); err != nil {
+		return nil, err
+	}
+
+	return result.Data, nil
+}
+
+// Verify checks a signature with the given key. The signature to verify goes
+// in request.Attributes.Signature; the result reports validity — a wrong
+// signature yields (false, nil), not an error (SignatureVerifiedResponseModel).
+func (c *Client) Verify(ctx context.Context, keyID uuid.UUID, request SignRequest) (bool, error) {
+	var result struct {
+		Valid bool `json:"valid"`
+	}
+
+	body, err := json.Marshal(request)
+	if err != nil {
+		return false, fmt.Errorf("marshaling verify request: %w", err)
+	}
+
+	if err := c.do(ctx, http.MethodPost, "/keys/"+keyID.String()+"/p/verify", body, true, &result, "application/kms.sign+json"); err != nil {
+		return false, err
+	}
+
+	return result.Valid, nil
+}
+
 // tokenInvalidator is implemented by token sources that can drop their cached
 // token, enabling the one-shot re-authentication on 401 responses.
 type tokenInvalidator interface {
