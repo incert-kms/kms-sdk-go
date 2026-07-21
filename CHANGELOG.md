@@ -7,6 +7,8 @@ and this project aims to adhere to [Semantic Versioning](https://semver.org/spec
 
 ## [Unreleased]
 
+## [1.2.0] - 2026-07-21
+
 ### Added
 
 - `Client.Sign` and `Client.Verify` (`POST /keys/{id}/p/sign|verify`,
@@ -146,6 +148,8 @@ Keys&More API documentation.
 - Initial release: Keycloak OAuth2 bootstrap (`Connect`), vslot listing, key
   search/read/create/delete, and encrypt/decrypt operations.
 
+[Unreleased]: https://github.com/incert-kms/kms-sdk-go/compare/v1.2.0...HEAD
+[1.2.0]: https://github.com/incert-kms/kms-sdk-go/compare/v1.1.0...v1.2.0
 [1.1.0]: https://github.com/incert-kms/kms-sdk-go/compare/v1.0.1...v1.1.0
 [1.0.1]: https://github.com/incert-kms/kms-sdk-go/compare/v1.0.0...v1.0.1
 [1.0.0]: https://github.com/incert-kms/kms-sdk-go/releases/tag/v1.0.0
