@@ -33,7 +33,7 @@ and this project aims to adhere to [Semantic Versioning](https://semver.org/spec
 ## [1.1.0] - 2026-07-17
 
 Conformance, concurrency and robustness release, aligning the SDK with the
-Keys&More API documentation (`api-doc/`).
+Keys&More API documentation.
 
 > **⚠ Breaking changes.** As announced in the README, the SDK is under
 > development and this release changes several public signatures. See
