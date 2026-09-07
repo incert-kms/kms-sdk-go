@@ -7,6 +7,8 @@ and this project aims to adhere to [Semantic Versioning](https://semver.org/spec
 
 ## [Unreleased]
 
+## [1.4.0] - 2026-09-07
+
 ### Added
 
 - TLS options for the SDK-managed HTTP client: `WithTLSCACert(file)` and
@@ -227,7 +229,8 @@ Keys&More API documentation.
 - Initial release: Keycloak OAuth2 bootstrap (`Connect`), vslot listing, key
   search/read/create/delete, and encrypt/decrypt operations.
 
-[Unreleased]: https://github.com/incert-kms/kms-sdk-go/compare/v1.3.0...HEAD
+[Unreleased]: https://github.com/incert-kms/kms-sdk-go/compare/v1.4.0...HEAD
+[1.4.0]: https://github.com/incert-kms/kms-sdk-go/compare/v1.3.0...v1.4.0
 [1.3.0]: https://github.com/incert-kms/kms-sdk-go/compare/v1.2.0...v1.3.0
 [1.2.0]: https://github.com/incert-kms/kms-sdk-go/compare/v1.1.0...v1.2.0
 [1.1.0]: https://github.com/incert-kms/kms-sdk-go/compare/v1.0.1...v1.1.0
