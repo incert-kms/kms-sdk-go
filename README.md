@@ -73,17 +73,24 @@ The SDK exposes the operations needed to manage and use keys through the Keys&Mo
     - Mode auto-discovered from the server's `/configs/auth` endpoint
     - Self-managed (`SELF_MANAGED`): login, token refresh and logout against the Keys&More TOKEN API
     - OAuth2 with Keycloak (URL, realm and client id from discovery, password grant)
+    - OAuth2 with a generic OIDC provider (`provider: OTHER` — Auth0, Okta): password grant against the discovered token endpoint, optional client secret for confidential clients
     - Token caching and refresh handled transparently; on a 401 the request is replayed once with a fresh token
     - `Logout` invalidates tokens (server-side on self-managed deployments)
 - Vslots
     - List vslots (paged responses iterated transparently)
 - Keys lifecycle
     - Create keys (returns the new key id and, for `persistence: NONE`, the generated material)
-    - Read keys (by ID or by listing/filtering within a vslot)
-    - Delete keys (permanent removal via the `DELETED` lifecycle state)
+    - Read keys (by ID or by listing/filtering within a vslot — by name, id, alias, type, algorithm, persistence, state, enabled)
+    - State management (forward-only transitions, enable/disable) and deletion (permanent removal via the `DELETED` lifecycle state)
+    - Rotation (returns the successor key id) and stable aliases across rotations
+    - Import, export (clear or wrapped formats), attach provider-side keys, edit use attributes
+    - Derive new keys and transport keys between vslots
+    - Query and clean up asynchronous process records
 - Cryptographic operations
     - Encrypt / Decrypt data with algorithm-specific attributes (`iv`, `counter`, `aad`, `label`, ...)
     - Sign / Verify with the full signature registry (RSA PKCS#1/PSS, ECDSA, HMAC, CMAC, ML-DSA); verify reports validity as a boolean, PSS-raw parameters travel as numeric PKCS#11 codes
+    - ICAO SOD, RFC 3161 timestamp and PDF signing (one method per media type)
+    - Certificate operations on keys: self-signed or CA-issued generation, CSR generation, certificate upload
 
 The client is safe for concurrent use by multiple goroutines once `Connect` has returned.
 
@@ -94,7 +101,8 @@ The client is safe for concurrent use by multiple goroutines once `Connect` has 
 | Option | Description |
 | --- | --- |
 | `WithBaseURL(url)` | Override the default base URL of the deployment, e.g. `https://kms.example.com/kms` — without the `/api` prefix, which is appended internally (the default points at INCERT's UAT environment). |
-| `WithUsernameAndPassword(user, pass)` | Credentials used for the Keycloak password grant. |
+| `WithUsernameAndPassword(user, pass)` | Credentials used for the password grant / self-managed login. |
+| `WithClientSecret(secret)` | OAuth2 client secret for confidential clients (used with `provider: OTHER`). |
 | `WithTimeout(d)` | Overall HTTP timeout of the SDK-managed client (default 10s). |
 | `WithHTTPClient(hc)` | Supply a custom `*http.Client`; takes precedence over `WithTimeout` and `WithTLSSkipVerify`. |
 | `WithTLSSkipVerify()` | Disable TLS verification (development only). |

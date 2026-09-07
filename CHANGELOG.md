@@ -7,6 +7,61 @@ and this project aims to adhere to [Semantic Versioning](https://semver.org/spec
 
 ## [Unreleased]
 
+### Added
+
+- **Key lifecycle**: `Client.SetKeyState` (`POST /keys/{id}/state`) for the
+  forward-only state transitions and enabled toggling, and `Client.RotateKey`
+  (`POST /keys/{id}/rotate`) returning the successor key id discovered by
+  re-reading the key's links around the (empty-bodied) rotation; the sentinel
+  `ErrSuccessorUnknown` distinguishes "rotated but successor not identified"
+  from a failed rotation.
+- **Key aliases**: `Client.FindKeyAliases`, `Client.CreateKeyAlias` and
+  `Client.MoveKeyAlias` (`GET /keys/aliases`, `POST /keys/{id}/alias`) with the
+  new `KeyAlias` model — stable handles that survive rotation.
+- **Key material operations** (`application/kms.key+json`): `Client.ExportKey`
+  (`POST /keys/{id}/p/export`), `Client.ImportKey` (`POST /vslots/{id}/p/ki`),
+  `Client.ImportKeyValues` (`POST /keys/{id}/p/ki`), `Client.AttachKey`
+  (`POST /vslots/{id}/p/ka`) and `Client.EditKey` (`POST /keys/{id}/p/edit`),
+  plus `KeyValueType*` and `KeyFormat*` constants for the key-value type and
+  format enums.
+- **Derive and transport**: `Client.DeriveKey` (`POST /keys/{id}/p/derive`,
+  `application/kms.derive+json`, new `DeriveRequest` model) and
+  `Client.TransportKey` (`POST /keys/{id}/transport`,
+  `application/kms.transport+json`).
+- **Sign flavors** — one method per media type on `POST /keys/{id}/p/sign`:
+  `Client.SignSOD` (`application/kms.sign-sod+json`, `SignSODRequest`),
+  `Client.SignTimestamp` (`application/kms.sign-timestamp+json`,
+  `SignTimestampRequest`) and `Client.SignPDF` (`application/kms.sign+pdf`).
+- **Certificate operations**: `Client.GenerateCertificate`,
+  `Client.GenerateCSR` and `Client.UpdateCertificate`
+  (`POST /keys/{id}/p/{certgen,csrgen,certupdate}`,
+  `application/kms.certificate+json`, new `CertificateRequest` model including
+  the `storeInDb` flag of servers >= 4.3.2.1).
+- **Async process queries**: `Client.GetKeyAsyncProcesses`,
+  `Client.GetKeyAsyncProcess`, `Client.DeleteKeyAsyncProcess` and their vslot
+  mirrors, with the new `AsyncProcess` model and status constants. Triggering
+  operations with `async=true` remains on the roadmap.
+- **Generic OIDC authentication** (`provider: OTHER` — Auth0, Okta): password
+  grant against the token endpoint from discovery (resolved against the
+  provider's own URL), the usable token selected by `accessTokenProperty`
+  (camel-case config mapped to the snake_case wire), refresh grant with
+  password-grant fallback, and the new `WithClientSecret` option for
+  confidential clients.
+- **HTTP 260 handling**: the success-shaped `INTERNAL_KEY_ATTRIBUTES_DIFFERENT`
+  status now surfaces as a `*APIError` (`StatusCode` 260) on every endpoint
+  instead of silently decoding its error body into an empty result.
+- **Correlation ids**: `WithCorrelationID(ctx, id)` sends the
+  `X-Correlation-Id` header (honored by servers >= 4.3.0.4, ignored by older
+  ones, reused on the 401 replay), and the new `APIError.CorrelationID` field
+  captures the id echoed on error responses.
+- `KeyFilter` gained `AliasID`, `Type`, `Alg`, `Persistence`, `State` and
+  `Enabled` fields for `Client.FindKeys`.
+
+### Changed
+
+- README and package documentation cover the new operations; `SPEC.md` is added
+  as the in-repo wire contract and roadmap of unimplemented operations.
+
 ## [1.2.0] - 2026-07-21
 
 ### Added

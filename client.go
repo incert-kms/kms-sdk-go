@@ -31,13 +31,14 @@ const pageSize = 10000 // page size requested from the paged list endpoints
 // After Connect returns, the Client is safe for concurrent use by multiple
 // goroutines. Connect itself must complete before concurrent calls start.
 type Client struct {
-	baseURL     string
-	apiURL      string // baseURL + "/api", the root of every REST path
-	username    string
-	password    string
-	httpClient  *http.Client
-	tokenSource TokenSource
-	logger      *slog.Logger
+	baseURL      string
+	apiURL       string // baseURL + "/api", the root of every REST path
+	username     string
+	password     string
+	clientSecret string
+	httpClient   *http.Client
+	tokenSource  TokenSource
+	logger       *slog.Logger
 
 	timeout       time.Duration
 	tlsSkipVerify bool
@@ -74,7 +75,8 @@ func NewClient(opts ...Option) *Client {
 // configuration from the server's public /configs/auth endpoint, sets up the
 // matching token backend, obtains a first token, and verifies authenticated
 // access with a vslot listing. Supported modes: SELF_MANAGED (tokens issued by
-// Keys&More itself) and OAUTH2 with provider KEYCLOAK (password grant).
+// Keys&More itself) and OAUTH2 with provider KEYCLOAK or OTHER (generic OIDC,
+// e.g. Auth0 or Okta), both via the password grant.
 func (c *Client) Connect(ctx context.Context) error {
 	// Get the auth config from KMS
 	config, err := c.getConfig(ctx)
@@ -118,36 +120,68 @@ func (c *Client) getConfig(ctx context.Context) (*Config, error) {
 	return &result, nil
 }
 
-// newOAuth2FromConfig validates the discovered OAuth2 configuration (only the
-// Keycloak provider is supported) and builds the Keycloak token backend,
-// resolving an absolute, root-relative or relative Keycloak URL against the
-// client's base URL.
+// newOAuth2FromConfig validates the discovered OAuth2 configuration and builds
+// the matching token backend: Keycloak (password grant against the discovered
+// realm) or a generic OIDC provider (provider OTHER — Auth0, Okta, ...),
+// resolving relative IdP URLs from discovery along the way.
 func (c *Client) newOAuth2FromConfig(config *Config) (TokenSource, error) {
 	if config.OAuth2 == nil {
 		return nil, errors.New("server config declares OAUTH2 but carries no oauth2 section")
 	}
-	if config.OAuth2.Provider != OAuth2ProviderKeycloak {
+
+	switch config.OAuth2.Provider {
+	case OAuth2ProviderKeycloak:
+		keycloak := config.OAuth2.Keycloak
+		if keycloak == nil {
+			return nil, errors.New("server config declares KEYCLOAK but carries no keycloak section")
+		}
+		keycloakBaseURL, err := resolveAuthURL(c.baseURL, keycloak.URL)
+		if err != nil {
+			return nil, err
+		}
+		return newOAuth2(keycloakBaseURL, keycloak.Realm, keycloak.ClientID, c.httpClient, c.username, c.password, c.logger), nil
+
+	case OAuth2ProviderOther:
+		other := config.OAuth2.Other
+		if other == nil {
+			return nil, errors.New("server config declares OTHER but carries no other section")
+		}
+		if other.TokenEndpoint == "" || other.ClientID == "" {
+			return nil, errors.New("oauth2 other config is missing tokenEndpoint or clientId")
+		}
+		// The token endpoint resolves against the provider's own URL from
+		// discovery, never against the KMS base URL.
+		tokenURL, err := resolveAuthURL(strings.TrimRight(other.URL, "/"), other.TokenEndpoint)
+		if err != nil {
+			return nil, err
+		}
+		if !strings.HasPrefix(tokenURL, "http://") && !strings.HasPrefix(tokenURL, "https://") {
+			return nil, fmt.Errorf("cannot resolve oauth2 token endpoint %q against provider url %q", other.TokenEndpoint, other.URL)
+		}
+		return newOIDCAuth(other, tokenURL, c.httpClient, c.username, c.password, c.clientSecret, c.logger), nil
+
+	default:
 		return nil, fmt.Errorf("unsupported oauth2 provider: %s", config.OAuth2.Provider)
 	}
-	keycloak := config.OAuth2.Keycloak
-	if keycloak == nil {
-		return nil, errors.New("server config declares KEYCLOAK but carries no keycloak section")
-	}
+}
 
-	kcURL := keycloak.URL
-	var keycloakBaseURL string
-	if strings.HasPrefix(kcURL, "http://") || strings.HasPrefix(kcURL, "https://") {
-		keycloakBaseURL = kcURL
-	} else if strings.HasPrefix(kcURL, "/") {
-		parsed, err := url.Parse(c.baseURL)
-		if err != nil {
-			return nil, fmt.Errorf("parsing base url: %w", err)
-		}
-		keycloakBaseURL = parsed.Scheme + "://" + parsed.Host + strings.TrimSuffix(kcURL, "/")
-	} else {
-		keycloakBaseURL = c.baseURL + "/" + kcURL
+// resolveAuthURL resolves an IdP URL from discovery — absolute, root-relative
+// ("/auth"), or relative ("auth") — against the given base URL. Root-relative
+// URLs resolve against the base's scheme and host only (dropping its context
+// path); relative URLs append to the full base. IdP URLs deliberately never
+// resolve against the /api URL.
+func resolveAuthURL(baseURL, ref string) (string, error) {
+	if strings.HasPrefix(ref, "http://") || strings.HasPrefix(ref, "https://") {
+		return ref, nil
 	}
-	return newOAuth2(keycloakBaseURL, keycloak.Realm, keycloak.ClientID, c.httpClient, c.username, c.password, c.logger), nil
+	if strings.HasPrefix(ref, "/") {
+		parsed, err := url.Parse(baseURL)
+		if err != nil {
+			return "", fmt.Errorf("parsing base url: %w", err)
+		}
+		return parsed.Scheme + "://" + parsed.Host + strings.TrimSuffix(ref, "/"), nil
+	}
+	return baseURL + "/" + ref, nil
 }
 
 // Logout invalidates the client's cached tokens. On SELF_MANAGED deployments
@@ -194,6 +228,24 @@ func (c *Client) FindKeys(ctx context.Context, vslotId uuid.UUID, filter KeyFilt
 	}
 	if filter.ID != uuid.Nil {
 		query.Set("id", filter.ID.String())
+	}
+	if filter.AliasID != uuid.Nil {
+		query.Set("alias", filter.AliasID.String())
+	}
+	if filter.Type != "" {
+		query.Set("type", filter.Type)
+	}
+	if filter.Alg != "" {
+		query.Set("alg", filter.Alg)
+	}
+	if filter.Persistence != "" {
+		query.Set("persistence", filter.Persistence)
+	}
+	if filter.State != "" {
+		query.Set("state", filter.State)
+	}
+	if filter.Enabled != nil {
+		query.Set("enabled", strconv.FormatBool(*filter.Enabled))
 	}
 
 	return fetchAllPages[KeySearchResult](ctx, c, "/keys", query)
@@ -373,7 +425,10 @@ func (c *Client) do(ctx context.Context, method, path string, body []byte, authe
 				}
 			}
 
-			if resp.StatusCode >= 400 {
+			// HTTP 260 (INTERNAL_KEY_ATTRIBUTES_DIFFERENT) is a non-standard,
+			// success-shaped status carrying an error-shaped body; fold it into
+			// the error path so it cannot decode into a zero-valued result.
+			if resp.StatusCode >= 400 || resp.StatusCode == statusKeyAttributesDifferent {
 				return newAPIError(resp)
 			}
 
@@ -411,6 +466,9 @@ func (c *Client) newRequest(ctx context.Context, method, path string, body []byt
 		req.Header.Set("Authorization", "Bearer "+token)
 	}
 	req.Header.Set("Accept", "application/json")
+	if id, ok := ctx.Value(correlationIDKey{}).(string); ok && id != "" {
+		req.Header.Set(headerCorrelationID, id)
+	}
 	if body != nil {
 		requestContentType := "application/json"
 		if len(contentType) > 0 && contentType[0] != "" {

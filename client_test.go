@@ -748,6 +748,284 @@ func TestOAuth2_concurrentGetTokenFetchesOnce(t *testing.T) {
 	}
 }
 
+func TestClient_status260(t *testing.T) {
+	t.Run("with body", func(t *testing.T) {
+		client, _ := testClient(t, func(w http.ResponseWriter, r *http.Request) {
+			w.WriteHeader(statusKeyAttributesDifferent)
+			json.NewEncoder(w).Encode(map[string]string{
+				"code":    ErrCodeInternalKeyAttributesDiffer,
+				"message": "internal key attributes differ from the external key",
+			})
+		})
+
+		var result KeyDataResponse
+		err := client.do(context.Background(), http.MethodPost, "/thing", nil, true, &result)
+		var apiErr *APIError
+		if !errors.As(err, &apiErr) {
+			t.Fatalf("err = %v, want *APIError (260 must not decode into the result)", err)
+		}
+		if apiErr.StatusCode != 260 || apiErr.Code != ErrCodeInternalKeyAttributesDiffer {
+			t.Errorf("got StatusCode=%d Code=%q", apiErr.StatusCode, apiErr.Code)
+		}
+	})
+
+	t.Run("without body defaults the code", func(t *testing.T) {
+		client, _ := testClient(t, func(w http.ResponseWriter, r *http.Request) {
+			w.WriteHeader(statusKeyAttributesDifferent)
+		})
+
+		err := client.do(context.Background(), http.MethodPost, "/thing", nil, true, nil)
+		var apiErr *APIError
+		if !errors.As(err, &apiErr) {
+			t.Fatalf("err = %v, want *APIError", err)
+		}
+		if apiErr.Code != ErrCodeInternalKeyAttributesDiffer {
+			t.Errorf("Code = %q, want the defaulted 260 code", apiErr.Code)
+		}
+	})
+}
+
+func TestClient_correlationID(t *testing.T) {
+	t.Run("header sent when the context carries an id", func(t *testing.T) {
+		var got string
+		client, _ := testClient(t, func(w http.ResponseWriter, r *http.Request) {
+			got = r.Header.Get("X-Correlation-Id")
+			w.WriteHeader(http.StatusOK)
+		})
+
+		ctx := WithCorrelationID(context.Background(), "cid-123")
+		if err := client.do(ctx, http.MethodGet, "/anything", nil, true, nil); err != nil {
+			t.Fatalf("do: %v", err)
+		}
+		if got != "cid-123" {
+			t.Errorf("X-Correlation-Id = %q, want cid-123", got)
+		}
+	})
+
+	t.Run("header absent without an id", func(t *testing.T) {
+		var got string
+		client, _ := testClient(t, func(w http.ResponseWriter, r *http.Request) {
+			got = r.Header.Get("X-Correlation-Id")
+			w.WriteHeader(http.StatusOK)
+		})
+
+		if err := client.do(context.Background(), http.MethodGet, "/anything", nil, true, nil); err != nil {
+			t.Fatalf("do: %v", err)
+		}
+		if got != "" {
+			t.Errorf("X-Correlation-Id = %q, want none", got)
+		}
+	})
+
+	t.Run("echoed id captured on APIError", func(t *testing.T) {
+		client, _ := testClient(t, func(w http.ResponseWriter, r *http.Request) {
+			w.Header().Set("X-Correlation-Id", "ref-42")
+			w.WriteHeader(http.StatusInternalServerError)
+			json.NewEncoder(w).Encode(map[string]string{"code": ErrCodeInternalServerError, "message": "boom. Reference: ref-42"})
+		})
+
+		err := client.do(context.Background(), http.MethodGet, "/thing", nil, true, nil)
+		var apiErr *APIError
+		if !errors.As(err, &apiErr) {
+			t.Fatalf("err = %v, want *APIError", err)
+		}
+		if apiErr.CorrelationID != "ref-42" {
+			t.Errorf("CorrelationID = %q, want ref-42", apiErr.CorrelationID)
+		}
+	})
+}
+
+func TestClient_correlationIDSurvives401Replay(t *testing.T) {
+	var correlationIDs []string
+	mux := http.NewServeMux()
+	srv := httptest.NewServer(mux)
+	t.Cleanup(srv.Close)
+
+	mux.HandleFunc("POST /realms/kms/protocol/openid-connect/token",
+		keycloakTokenHandler(t, "kms", nil))
+	mux.HandleFunc("GET /api/protected", func(w http.ResponseWriter, r *http.Request) {
+		correlationIDs = append(correlationIDs, r.Header.Get("X-Correlation-Id"))
+		if r.Header.Get("Authorization") != "Bearer fresh-token" {
+			w.WriteHeader(http.StatusUnauthorized)
+			json.NewEncoder(w).Encode(map[string]string{"code": ErrCodeInvalidToken, "message": "revoked"})
+			return
+		}
+		w.WriteHeader(http.StatusOK)
+	})
+
+	client := NewClient(WithBaseURL(srv.URL))
+	source := newOAuth2(srv.URL, "", "", client.httpClient, "u", "p", nil)
+	source.accessToken = "stale-token"
+	source.accessTokenExpiry = time.Now().Add(time.Hour)
+	client.tokenSource = source
+
+	ctx := WithCorrelationID(context.Background(), "cid-replay")
+	if err := client.do(ctx, http.MethodGet, "/protected", nil, true, nil); err != nil {
+		t.Fatalf("expected replay to succeed, got %v", err)
+	}
+	if want := []string{"cid-replay", "cid-replay"}; !equalStrings(correlationIDs, want) {
+		t.Errorf("correlation ids per attempt = %v, want %v", correlationIDs, want)
+	}
+}
+
+func TestResolveAuthURL(t *testing.T) {
+	cases := []struct {
+		name string
+		base string
+		ref  string
+		want string
+	}{
+		{"absolute", "https://kms.example.com/kms", "https://idp.example.com/auth", "https://idp.example.com/auth"},
+		{"root-relative drops the context path", "https://kms.example.com/kms", "/auth", "https://kms.example.com/auth"},
+		{"root-relative trailing slash trimmed", "https://kms.example.com/kms", "/auth/", "https://kms.example.com/auth"},
+		{"relative appends to the full base", "https://kms.example.com/kms", "auth", "https://kms.example.com/kms/auth"},
+	}
+
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			got, err := resolveAuthURL(tc.base, tc.ref)
+			if err != nil {
+				t.Fatalf("resolveAuthURL: %v", err)
+			}
+			if got != tc.want {
+				t.Errorf("got %q, want %q", got, tc.want)
+			}
+		})
+	}
+}
+
+func TestConnect_oidcProvider(t *testing.T) {
+	mux := http.NewServeMux()
+	srv := httptest.NewServer(mux)
+	t.Cleanup(srv.Close)
+
+	mux.HandleFunc("GET /api/configs/auth", func(w http.ResponseWriter, r *http.Request) {
+		json.NewEncoder(w).Encode(Config{
+			Type: AuthenticationTypeOAuth2,
+			OAuth2: &OAuth2Config{
+				Provider: OAuth2ProviderOther,
+				Other: &OAuth2OtherConfig{
+					URL:           srv.URL,
+					TokenEndpoint: "/oauth/token",
+					ClientID:      "kms-m2m",
+					Audience:      "KMS",
+				},
+			},
+		})
+	})
+	mux.HandleFunc("POST /oauth/token", func(w http.ResponseWriter, r *http.Request) {
+		if err := r.ParseForm(); err != nil {
+			t.Fatalf("parsing token form: %v", err)
+		}
+		if got := r.PostForm.Get("client_id"); got != "kms-m2m" {
+			t.Errorf("client_id = %q, want kms-m2m", got)
+		}
+		if got := r.PostForm.Get("audience"); got != "KMS" {
+			t.Errorf("audience = %q, want KMS", got)
+		}
+		json.NewEncoder(w).Encode(map[string]any{"access_token": "fresh-token", "expires_in": 300})
+	})
+	mux.HandleFunc("GET /api/vslots", func(w http.ResponseWriter, r *http.Request) {
+		if got, want := r.Header.Get("Authorization"), "Bearer fresh-token"; got != want {
+			t.Errorf("Authorization = %q, want %q", got, want)
+		}
+		json.NewEncoder(w).Encode(pagedResponse[Vslot]{TotalPages: 1, Last: true})
+	})
+
+	client := NewClient(WithBaseURL(srv.URL), WithUsernameAndPassword("u", "p"))
+	if err := client.Connect(context.Background()); err != nil {
+		t.Fatalf("Connect: %v", err)
+	}
+}
+
+func TestConnect_otherProviderConfigErrors(t *testing.T) {
+	cases := []struct {
+		name    string
+		other   *OAuth2OtherConfig
+		wantErr string
+	}{
+		{"missing other section", nil, "no other section"},
+		{"missing token endpoint", &OAuth2OtherConfig{ClientID: "cid"}, "missing tokenEndpoint or clientId"},
+		{"missing client id", &OAuth2OtherConfig{TokenEndpoint: "/token"}, "missing tokenEndpoint or clientId"},
+		{"unresolvable token endpoint", &OAuth2OtherConfig{TokenEndpoint: "token", ClientID: "cid"}, "cannot resolve oauth2 token endpoint"},
+	}
+
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			client, _ := testClient(t, func(w http.ResponseWriter, r *http.Request) {
+				json.NewEncoder(w).Encode(Config{
+					Type:   AuthenticationTypeOAuth2,
+					OAuth2: &OAuth2Config{Provider: OAuth2ProviderOther, Other: tc.other},
+				})
+			})
+			err := client.Connect(context.Background())
+			if err == nil || !strings.Contains(err.Error(), tc.wantErr) {
+				t.Fatalf("err = %v, want mention of %q", err, tc.wantErr)
+			}
+		})
+	}
+}
+
+func TestClient_FindKeys_extendedFilters(t *testing.T) {
+	vslotID := uuid.New()
+	aliasID := uuid.New()
+	enabled := false
+
+	t.Run("all filters set", func(t *testing.T) {
+		client, _ := testClient(t, func(w http.ResponseWriter, r *http.Request) {
+			q := r.URL.Query()
+			for key, want := range map[string]string{
+				"alias":       aliasID.String(),
+				"type":        KeyTypeGenerated,
+				"alg":         "AES256",
+				"persistence": PersistenceInternal,
+				"state":       KeyStateActive,
+				"enabled":     "false",
+			} {
+				if got := q.Get(key); got != want {
+					t.Errorf("query %s = %q, want %q", key, got, want)
+				}
+			}
+			json.NewEncoder(w).Encode(pagedResponse[KeySearchResult]{
+				Content:    []KeySearchResult{{Name: "match"}},
+				TotalPages: 1,
+				Last:       true,
+			})
+		})
+
+		got, err := client.FindKeys(context.Background(), vslotID, KeyFilter{
+			AliasID:     aliasID,
+			Type:        KeyTypeGenerated,
+			Alg:         "AES256",
+			Persistence: PersistenceInternal,
+			State:       KeyStateActive,
+			Enabled:     &enabled,
+		})
+		if err != nil {
+			t.Fatalf("FindKeys: %v", err)
+		}
+		if len(got) != 1 || got[0].Name != "match" {
+			t.Errorf("got %+v, want one key", got)
+		}
+	})
+
+	t.Run("zero filters absent", func(t *testing.T) {
+		client, _ := testClient(t, func(w http.ResponseWriter, r *http.Request) {
+			q := r.URL.Query()
+			for _, key := range []string{"alias", "type", "alg", "persistence", "state", "enabled"} {
+				if q.Has(key) {
+					t.Errorf("query %s should be absent, got %q", key, q.Get(key))
+				}
+			}
+			json.NewEncoder(w).Encode(pagedResponse[KeySearchResult]{TotalPages: 1, Last: true})
+		})
+
+		if _, err := client.FindKeys(context.Background(), vslotID, KeyFilter{}); err != nil {
+			t.Fatalf("FindKeys: %v", err)
+		}
+	})
+}
+
 func TestAPIError_errorsAs(t *testing.T) {
 	client, _ := testClient(t, func(w http.ResponseWriter, r *http.Request) {
 		w.WriteHeader(http.StatusForbidden)

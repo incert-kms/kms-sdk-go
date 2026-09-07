@@ -49,6 +49,14 @@ func WithUsernameAndPassword(username, password string) Option {
 	}
 }
 
+// WithClientSecret sets the OAuth2 client secret sent to the identity
+// provider's token endpoint. It is currently used only on deployments with
+// provider OTHER (generic OIDC), where confidential clients (e.g. Auth0)
+// require one; leave it unset for public clients.
+func WithClientSecret(secret string) Option {
+	return func(c *Client) { c.clientSecret = secret }
+}
+
 // WithLogger supplies a *slog.Logger for diagnostic output; without it the SDK
 // is silent.
 func WithLogger(logger *slog.Logger) Option {

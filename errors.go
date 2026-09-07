@@ -32,8 +32,16 @@ const (
 	ErrCodeInternalKeyAttributesDiffer   = "INTERNAL_KEY_ATTRIBUTES_DIFFERENT" // 260 (non-standard)
 )
 
-// APIError is returned for every HTTP response with status >= 400, from both
-// the KMS API and the OAuth2 token endpoint. Inspect it with errors.As:
+// statusKeyAttributesDifferent is the non-standard, success-shaped HTTP status
+// the server uses exclusively for INTERNAL_KEY_ATTRIBUTES_DIFFERENT (the
+// attach/import consistency check). It carries an error-shaped body, so do()
+// folds it into the error path.
+const statusKeyAttributesDifferent = 260
+
+// APIError is returned for every HTTP response with status >= 400 — from both
+// the KMS API and the OAuth2 token endpoint — and for the non-standard,
+// success-shaped status 260 (INTERNAL_KEY_ATTRIBUTES_DIFFERENT). Inspect it
+// with errors.As:
 //
 //	var apiErr *kmssdk.APIError
 //	if errors.As(err, &apiErr) {
@@ -65,6 +73,11 @@ type APIError struct {
 	// ("error", "error_description") returned by token endpoints.
 	ErrorCode        string `json:"error"`
 	ErrorDescription string `json:"error_description"`
+	// CorrelationID is the X-Correlation-Id header echoed on the response by
+	// servers >= 4.3.0.4 (empty on older servers). It identifies the request
+	// in the server logs; internal-error messages reference it. It comes from
+	// the response header, never from the body.
+	CorrelationID string `json:"-"`
 }
 
 // Error implements the error interface.
@@ -78,7 +91,10 @@ func (e *APIError) Error() string {
 // IdP-native OAuth2 shape ({error, error_description}). The optional message is
 // used as a fallback when the body yields none.
 func newAPIError(resp *http.Response, message ...string) error {
-	apiErr := &APIError{StatusCode: resp.StatusCode}
+	apiErr := &APIError{
+		StatusCode:    resp.StatusCode,
+		CorrelationID: resp.Header.Get(headerCorrelationID),
+	}
 	body, _ := io.ReadAll(resp.Body)
 	if err := json.Unmarshal(body, apiErr); err != nil {
 		// Couldn't unmarshal the error response, fallback to the HTTP status
@@ -98,6 +114,12 @@ func newAPIError(resp *http.Response, message ...string) error {
 				apiErr.ErrorDescription,
 			)
 		}
+	}
+
+	// http.StatusText knows no 260, so a 260 without a body code would end up
+	// with an empty Code; default it to the one code 260 stands for.
+	if apiErr.Code == "" && resp.StatusCode == statusKeyAttributesDifferent {
+		apiErr.Code = ErrCodeInternalKeyAttributesDiffer
 	}
 
 	// If an optional message is provided, use it when the response body did not

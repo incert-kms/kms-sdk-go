@@ -32,6 +32,44 @@ const (
 	KeyTypeWrap      = "WRAP"
 )
 
+// Key value types (KeyValueModel.type): the kind of material a [KeyValue]
+// carries or requests.
+const (
+	KeyValueTypeSecret      = "SECRET"
+	KeyValueTypePublic      = "PUBLIC"
+	KeyValueTypePrivate     = "PRIVATE"
+	KeyValueTypeCertificate = "CERTIFICATE"
+	KeyValueTypeRaw         = "RAW"
+	KeyValueTypeMulti       = "MULTI" // container formats carrying several values, e.g. PKCS#12
+)
+
+// Key value formats (KeyValueModel.format and wrapKeyFormat). Clear formats
+// apply to public material; secret and private material leaves the provider
+// only in one of the wrapped formats, with the wrapping key given as an
+// external public key ([KeyValue.WrapKey]) or an internal key reference
+// ([KeyValue.WrapKeyID]).
+const (
+	KeyFormatNone          = "NONE"
+	KeyFormatPlain         = "PLAIN"
+	KeyFormatPKCS8         = "PKCS8"
+	KeyFormatX509          = "X509"
+	KeyFormatPKCS12        = "PKCS12"
+	KeyFormatOpenSSLPublic = "OPENSSL_PUBLIC"
+	KeyFormatWrapped       = "WRAPPED"
+	KeyFormatAESCBCPad     = "AES_CBC_PAD"
+	KeyFormatAESGCM        = "AES_GCM"
+
+	KeyFormatAESWrapped                    = "AES_WRAPPED"
+	KeyFormatAESKWPWrapped                 = "AES_KWP_WRAPPED" //nolint:gosec // server key-format identifier, not a credential
+	KeyFormatRSAESOAEPSHA256Wrapped        = "RSAES_OAEP_SHA_256_WRAPPED"
+	KeyFormatRSAESOAEPSHA256AESWrapped     = "RSAES_OAEP_SHA_256_AES_WRAPPED"
+	KeyFormatRSAESOAEPSHA1Wrapped          = "RSAES_OAEP_SHA_1_WRAPPED"
+	KeyFormatRSAESPKCS1V15Wrapped          = "RSAES_PKCS1_V1_5_WRAPPED"
+	KeyFormatRSAESPKCS1V15AESCBCPadWrapped = "RSAES_PKCS1_V1_5_AES_CBC_PAD_WRAPPED"
+	KeyFormatRSAESPKCS1V15AESGCMWrapped    = "RSAES_PKCS1_V1_5_AES_GCM_WRAPPED"
+	KeyFormatQPMLDSAWrapAESKWP             = "QP_MLDSA_WRAP_AESKWP" // quantum-proof: ML-DSA-authenticated AES-KWP
+)
+
 // KeyState is the lifecycle state of a key as reported in search results
 // (KeyStateModel).
 type KeyState struct {
@@ -44,6 +82,19 @@ type KeyState struct {
 type KeyFilter struct {
 	Name string
 	ID   uuid.UUID
+	// AliasID matches the key currently reachable under the given alias.
+	AliasID uuid.UUID
+	// Type filters by key type (a KeyType* constant).
+	Type string
+	// Alg filters by key algorithm, e.g. "AES256".
+	Alg string
+	// Persistence filters by persistence mode (a Persistence* constant).
+	Persistence string
+	// State filters by lifecycle state (a KeyState* constant).
+	State string
+	// Enabled filters by the enabled flag; nil means no filter (false is a
+	// meaningful filter value).
+	Enabled *bool
 }
 
 // KeySearchResult is the list/search view of a key returned by

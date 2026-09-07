@@ -15,7 +15,7 @@ type SignRequest struct {
 // Verify puts the signature to check in Signature; RSA-PSS over a
 // caller-prepared digest (RSA_PKCS-PSS_RAW) uses HashAlg/MGF/SaltLength with
 // numeric PKCS#11 codes (e.g. HashAlg 592 = CKM_SHA256, MGF 2 =
-// CKG_MGF1_SHA256), per 05-crypto-operations.md.
+// CKG_MGF1_SHA256); see SPEC.md for the algorithm registry.
 type SignatureAttributes struct {
 	Signature  []byte `json:"signature,omitempty"`
 	HashAlg    *int   `json:"hashAlg,omitempty"`
