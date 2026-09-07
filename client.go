@@ -3,7 +3,6 @@ package kmssdk
 import (
 	"bytes"
 	"context"
-	"crypto/tls"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -40,12 +39,15 @@ type Client struct {
 	tokenSource  TokenSource
 	logger       *slog.Logger
 
-	timeout       time.Duration
-	tlsSkipVerify bool
+	timeout time.Duration
+	tlsOpts tlsOptions // TLS settings of the SDK-managed client; see tls.go
+	tlsErr  error      // deferred failure to load TLS material, surfaced by Connect
 }
 
 // NewClient creates a Client configured by the given options. It performs no
-// I/O; call [Client.Connect] to authenticate against the server.
+// network I/O; the only files it reads are the certificates and keys named by
+// the WithTLS* options, and a failure to load them is deferred to
+// [Client.Connect], which reports it before contacting the server.
 func NewClient(opts ...Option) *Client {
 	c := &Client{
 		baseURL: defaultBaseURL,
@@ -58,14 +60,9 @@ func NewClient(opts ...Option) *Client {
 	c.apiURL = c.baseURL + "/api"
 
 	if c.httpClient == nil {
-		c.httpClient = &http.Client{Timeout: c.timeout}
-		if c.tlsSkipVerify {
-			transport := http.DefaultTransport.(*http.Transport).Clone()
-			transport.TLSClientConfig = &tls.Config{InsecureSkipVerify: true} //nolint:gosec // explicit caller opt-in via WithTLSSkipVerify; intended for dev/self-signed environments
-			c.httpClient.Transport = transport
-		}
-	} else if c.tlsSkipVerify {
-		c.logger.Warn("WithTLSSkipVerify is ignored when WithHTTPClient supplies a custom client; configure TLS on the custom client instead")
+		c.httpClient, c.tlsErr = c.newManagedHTTPClient()
+	} else if c.tlsOpts.configured() {
+		c.logger.Warn("TLS options are ignored when WithHTTPClient supplies a custom client; configure TLS on the custom client instead")
 	}
 
 	return c
@@ -76,8 +73,13 @@ func NewClient(opts ...Option) *Client {
 // matching token backend, obtains a first token, and verifies authenticated
 // access with a vslot listing. Supported modes: SELF_MANAGED (tokens issued by
 // Keys&More itself) and OAUTH2 with provider KEYCLOAK or OTHER (generic OIDC,
-// e.g. Auth0 or Okta), both via the password grant.
+// e.g. Auth0 or Okta), both via the password grant. A TLS option that failed
+// to load in [NewClient] is reported here first.
 func (c *Client) Connect(ctx context.Context) error {
+	if c.tlsErr != nil {
+		return fmt.Errorf("tls configuration: %w", c.tlsErr)
+	}
+
 	// Get the auth config from KMS
 	config, err := c.getConfig(ctx)
 	if err != nil {

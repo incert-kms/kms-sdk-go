@@ -22,8 +22,10 @@ the test suite, and new operations should be designed against the contract state
    operation is a small typed wrapper over the single request chokepoint
    `Client.do(ctx, method, path, body, authenticated, result, contentType...)` —
    operations never hand-roll HTTP.
-2. **Functional options.** `NewClient(opts ...Option)` performs no I/O; `Connect(ctx)`
-   does the authentication bootstrap. Configuration is immutable after construction.
+2. **Functional options.** `NewClient(opts ...Option)` performs no network I/O (files
+   named by `WithTLS*` options are read at construction; load failures surface from
+   `Connect`); `Connect(ctx)` does the authentication bootstrap. Configuration is
+   immutable after construction.
 3. **`context.Context` first.** Every exported method and every internal I/O helper
    takes a context as its first parameter; cancellation and deadlines propagate to the
    HTTP layer via `http.NewRequestWithContext`.
@@ -289,7 +291,7 @@ itself has still happened.
 ### Client construction
 
 ```go
-func NewClient(opts ...Option) *Client        // no I/O
+func NewClient(opts ...Option) *Client        // no network I/O
 func (c *Client) Connect(ctx context.Context) error
 func (c *Client) Logout(ctx context.Context) error
 ```
@@ -300,8 +302,13 @@ func (c *Client) Logout(ctx context.Context) error
 | `WithUsernameAndPassword(u, p)` | Credentials for the password grant / self-managed login. |
 | `WithClientSecret(s)` | OAuth2 client secret for confidential clients; consumed only by the `provider: OTHER` backend. |
 | `WithTimeout(d)` | Overall timeout of the SDK-managed HTTP client (default 10 s — raise for synchronous key generation on slow HSMs). |
-| `WithHTTPClient(hc)` | Custom `*http.Client`; wins over `WithTimeout`/`WithTLSSkipVerify`. |
-| `WithTLSSkipVerify()` | Disable TLS verification (development only; warns and is ignored with a custom client). |
+| `WithTLSCACert(file)` | PEM trust anchors for the SDK-managed client, replacing the system roots; also governs the identity provider's token requests. Read at construction; load failures surface from `Connect`. |
+| `WithTLSCAPath(dir)` | Directory walked recursively for PEM trust anchors; files without certificates are skipped; combines with `WithTLSCACert`. |
+| `WithTLSClientCert(certFile, keyFile)` | Client certificate and private key for mutual TLS; both required. |
+| `WithTLSServerName(name)` | Server name for SNI and certificate verification. |
+| `WithTLSConfig(cfg)` | Base `*tls.Config` (cloned); the other `WithTLS*` options layer onto it. |
+| `WithHTTPClient(hc)` | Custom `*http.Client`; wins over `WithTimeout` and every `WithTLS*` option (one warning is logged). |
+| `WithTLSSkipVerify()` | Disable TLS verification (development only; warns and is ignored with a custom client; warns when combined with CA material or a server name). |
 | `WithLogger(l)` | `*slog.Logger` for diagnostics; silent by default. |
 
 Per-call: `WithCorrelationID(ctx, id)` returns a context that makes every request

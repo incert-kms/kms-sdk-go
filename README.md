@@ -104,9 +104,17 @@ The client is safe for concurrent use by multiple goroutines once `Connect` has 
 | `WithUsernameAndPassword(user, pass)` | Credentials used for the password grant / self-managed login. |
 | `WithClientSecret(secret)` | OAuth2 client secret for confidential clients (used with `provider: OTHER`). |
 | `WithTimeout(d)` | Overall HTTP timeout of the SDK-managed client (default 10s). |
-| `WithHTTPClient(hc)` | Supply a custom `*http.Client`; takes precedence over `WithTimeout` and `WithTLSSkipVerify`. |
+| `WithTLSCACert(file)` | PEM file of trust anchors for the SDK-managed client, replacing the system roots (the identity provider's token requests use the same transport). |
+| `WithTLSCAPath(dir)` | Directory walked recursively for PEM trust anchors; files without certificates are skipped; combines with `WithTLSCACert`. |
+| `WithTLSClientCert(certFile, keyFile)` | Client certificate and private key for mutual TLS. |
+| `WithTLSServerName(name)` | Server name for SNI and certificate verification. |
+| `WithTLSConfig(cfg)` | Base `*tls.Config` (cloned) that the other `WithTLS*` options layer onto — e.g. to keep the system roots via `x509.SystemCertPool()`. |
 | `WithTLSSkipVerify()` | Disable TLS verification (development only). |
+| `WithHTTPClient(hc)` | Supply a custom `*http.Client`; takes precedence over `WithTimeout` and every `WithTLS*` option. |
 | `WithLogger(l)` | Supply a `*slog.Logger`; without it the SDK is silent. |
+
+TLS files are read by `NewClient`; a load failure is returned by `Connect` as
+`tls configuration: ...` before any request is made.
 
 ## Error handling
 

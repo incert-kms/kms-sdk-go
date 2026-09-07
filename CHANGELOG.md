@@ -7,6 +7,28 @@ and this project aims to adhere to [Semantic Versioning](https://semver.org/spec
 
 ## [Unreleased]
 
+### Added
+
+- TLS options for the SDK-managed HTTP client: `WithTLSCACert(file)` and
+  `WithTLSCAPath(dir)` set PEM trust anchors that replace the system roots (the
+  directory is walked recursively and files without certificates are skipped),
+  `WithTLSClientCert(certFile, keyFile)` presents a client certificate for
+  mutual TLS, `WithTLSServerName(name)` sets the name used for SNI and
+  verification, and `WithTLSConfig(cfg)` supplies a base `*tls.Config` (cloned)
+  that the other options layer onto. The material is loaded by `NewClient`; a
+  load failure is reported by `Connect` as `tls configuration: ...` before any
+  request is made. The identity provider's token requests share the transport,
+  so the settings apply to them as well.
+
+### Changed
+
+- `WithHTTPClient` now takes precedence over every `WithTLS*` option
+  (previously only `WithTLSSkipVerify`) and logs a single warning when both are
+  supplied. `NewClient` is documented as performing no *network* I/O, since it
+  reads the files named by the TLS options.
+- `WithTLSSkipVerify` combined with CA material or a server name logs a warning
+  that those are not verified.
+
 ## [1.3.0] - 2026-09-07
 
 ### Added

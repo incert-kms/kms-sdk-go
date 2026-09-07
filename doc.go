@@ -38,9 +38,13 @@
 //   - [WithClientSecret] sets the OAuth2 client secret for confidential
 //     clients (provider OTHER).
 //   - [WithTimeout] adjusts the HTTP timeout (default 10s).
+//   - [WithTLSCACert] and [WithTLSCAPath] set the trust anchors (replacing
+//     the system roots), [WithTLSClientCert] a client certificate for mutual
+//     TLS, [WithTLSServerName] the verified server name, and [WithTLSConfig]
+//     a base *tls.Config the other TLS options layer onto.
 //   - [WithTLSSkipVerify] disables TLS verification (development only).
 //   - [WithHTTPClient] supplies a custom *http.Client (takes precedence over
-//     WithTimeout and WithTLSSkipVerify).
+//     WithTimeout and every WithTLS* option).
 //   - [WithLogger] supplies a *slog.Logger; without it the SDK is silent.
 //
 // # Operations
